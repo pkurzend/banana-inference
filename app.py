@@ -24,6 +24,30 @@ import uuid
 def init():
     global model
     HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")
+
+    model_path = 'stabilityai/stable-diffusion-2-1-base'
+
+    tokenizer = CLIPTokenizerWithEmbeddings.from_pretrained(model_path, subfolder="tokenizer")
+
+    scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
+    model = StableDiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, tokenizer=tokenizer, safety_checker=None, torch_dtype=torch.float16, use_auth_token=HF_AUTH_TOKEN).to("cuda")
+
+    model.tokenizer.load_embedding('<flora-marble>', './FloralMarble-400.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<flora-marble250>', './FloralMarble-250.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<flora-marble150>', './FloralMarble-150.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<photo-helper>', './PhotoHelper.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<lysergian-dreams>', './LysergianDreams-3600.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<urban-jungle>', './UrbanJungle.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<cinema-helper>', './CinemaHelper.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<neg-mutation>', './NegMutation-2400.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<car-helper>', './CarHelper.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<hyper-fluid>', './HyperFluid.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<double-exposure>', './dblx.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<pencil-graphite>', './ppgra.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<viking-punk>', './VikingPunk.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<gigachad>', './GigaChad.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<glass-case>', './kc16-v4-5000.pt', model.text_encoder)
+    model.tokenizer.load_embedding('<action-helper>', './ActionHelper.pt', model.text_encoder)
     
 
 
@@ -67,35 +91,36 @@ def inference(model_inputs:dict) -> dict:
 
 
     local_path = f"{model_id}/"
-    s3_path = f"stable-diffusion-finetunings/{user_id}/data/{model_id}/"
-    s3_file.get(s3_path, local_path, recursive=True) 
-        
+    os.makedirs(local_path, exist_ok=True)
+
+
+    s3_text_encoder_path = f"stable-diffusion-finetunings/{user_id}/data/{model_id}/text_encoder/"
+    s3_file.get(s3_text_encoder_path, local_path+'text_encoder/', recursive=True)
+
+    s3_unet_path = f"stable-diffusion-finetunings/{user_id}/data/{model_id}/unet/"
+    s3_file.get(s3_unet_path, local_path+'text_encoder/', recursive=True)
+
+
+    s3_model_index_path = f"stable-diffusion-finetunings/{user_id}/data/{model_id}/model_index.json "
+    s3_file.get(s3_model_index_path, local_path+'model_index.json ', recursive=True)
+          
  
 
     model_path = local_path
 
+    text_encoder = CLIPTextModel.from_pretrained(
+        model_path,
+        subfolder="text_encoder",
+    )
+    model.text_encoder = text_encoder
 
-    tokenizer = CLIPTokenizerWithEmbeddings.from_pretrained(model_path, subfolder="tokenizer")
 
-    scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
-    model = StableDiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, tokenizer=tokenizer, safety_checker=None, torch_dtype=torch.float16, use_auth_token=HF_AUTH_TOKEN).to("cuda")
+    unet = UNet2DConditionModel.from_pretrained(
+        model_path,
+        subfolder="unet",
+    )
 
-    model.tokenizer.load_embedding('<flora-marble>', './FloralMarble-400.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<flora-marble250>', './FloralMarble-250.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<flora-marble150>', './FloralMarble-150.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<photo-helper>', './PhotoHelper.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<lysergian-dreams>', './LysergianDreams-3600.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<urban-jungle>', './UrbanJungle.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<cinema-helper>', './CinemaHelper.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<neg-mutation>', './NegMutation-2400.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<car-helper>', './CarHelper.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<hyper-fluid>', './HyperFluid.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<double-exposure>', './dblx.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<pencil-graphite>', './ppgra.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<viking-punk>', './VikingPunk.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<gigachad>', './GigaChad.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<glass-case>', './kc16-v4-5000.pt', model.text_encoder)
-    model.tokenizer.load_embedding('<action-helper>', './ActionHelper.pt', model.text_encoder)
+    model.unet = unet
 
 
 
@@ -118,31 +143,5 @@ def inference(model_inputs:dict) -> dict:
     # Return the results as a dictionary
     return {'image_base64': image_base64, 'model_id' : model_id, 'user_id' : user_id}
 
-
-
-    # TRAIN_STEPS = 6000
-    # !accelerate launch train_dreambooth21.py \
-    # --pretrained_model_name_or_path="stabilityai/stable-diffusion-2" \
-    # --pretrained_vae_name_or_path="stabilityai/sd-vae-ft-mse" \
-    # --output_dir=$OUTPUT_DIR \
-    # --revision="fp16" \
-    # --with_prior_preservation --prior_loss_weight=1.0 \
-    # --seed=1337 \
-    # --resolution=768 \
-    # --train_batch_size=2 \
-    # --train_text_encoder \
-    # --mixed_precision="fp16" \
-    # --use_8bit_adam \
-    # --gradient_checkpointing \
-    # --gradient_accumulation_steps=3 \
-    # --center_crop \
-    # --learning_rate=1e-6 \
-    # --lr_scheduler="polynomial" \
-    # --lr_warmup_steps=0 \
-    # --num_class_images=500 \
-    # --sample_batch_size=4 \
-    # --max_train_steps=$TRAIN_STEPS \
-    # --save_interval=2000 \
-    # --concepts_list="concepts_list.json"
 
 
