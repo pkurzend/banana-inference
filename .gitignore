@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+
+data/
+models/
+stable_diffusion_weights/
+
 # Distribution / packaging
 .Python
 build/
