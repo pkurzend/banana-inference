@@ -36,31 +36,6 @@ def inference(model_inputs:dict) -> dict:
 
     HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN")
 
-    # Parse out your arguments
-    # prompt = model_inputs.get('prompt', None)
-    # negative_prompt = model_inputs.get('negative_prompt', '')
-    # height = model_inputs.get('height', 768)
-    # width = model_inputs.get('width', 768)
-    # num_inference_steps = model_inputs.get('num_inference_steps', 50)
-    # guidance_scale = model_inputs.get('guidance_scale', 7.5)
-    # input_seed = model_inputs.get("seed",None)
-
-    # with open(f"{user_id}/{model_id}/model_inputs.json", "w") as f:
-    #     json.dump(model_inputs, f, indent=4)
-    
-    OUTPUT_DIR = "stable_diffusion_weights"
-    concepts_list = model_inputs.get("concepts_list",None)
-    pretrained_model_name_or_path = model_inputs.get("pretrained_model_name_or_path", "stabilityai/stable-diffusion-2")
-    resolution = model_inputs.get("resolution", 768)
-    train_batch_size = model_inputs.get("train_batch_size", 2)
-    train_text_encoder = model_inputs.get("train_text_encoder", True)
-    gradient_accumulation_steps = model_inputs.get("gradient_accumulation_steps", 1)
-    center_crop = model_inputs.get("center_crop", True)
-    learning_rate = model_inputs.get("learning_rate", 2e-6)
-    num_class_images = model_inputs.get("num_class_images", 50)
-    max_train_steps = model_inputs.get("max_train_steps", 1200)
-    center_crop = model_inputs.get("center_crop", True)
-    center_crop = model_inputs.get("center_crop", True)
 
 
     prompt = model_inputs.get('prompt', None)
@@ -72,14 +47,15 @@ def inference(model_inputs:dict) -> dict:
     input_seed = model_inputs.get("seed",None)
 
     user_id = model_inputs.get("user_id",None)
-    model_id = uuid.uuid4().hex
+    model_id = model_inputs.get("model_id",None)
+
 
 
     if user_id == None:
         return {'message': "No user_id provided"}
 
-    if concepts_list == None:
-        return {'message': "No concepts_list provided"}
+    if model_id == None:
+        return {'message': "No model_id provided"}
 
     if prompt == None:
         return {'message': "No prompt provided"}
@@ -89,71 +65,15 @@ def inference(model_inputs:dict) -> dict:
     s3_file = s3fs.S3FileSystem(key=os.getenv("KEY"), secret=os.getenv("SECRET"), client_kwargs={'endpoint_url':'https://s3.eu-central-1.amazonaws.com'})
      
 
-    for c in concepts_list:
-        os.makedirs(c["instance_data_dir"], exist_ok=True)
-        if c.get('class_data_dir'):
-            os.makedirs(c["class_data_dir"], exist_ok=True)
 
-        local_path = f"{c['instance_data_dir']}/"
-        s3_path = f"stable-diffusion-finetunings/{user_id}/data/{c['instance_data_dir']}/"
-        s3_file.get(s3_path, local_path, recursive=True) 
+    local_path = f"{model_id}/"
+    s3_path = f"stable-diffusion-finetunings/{user_id}/data/{model_id}/"
+    s3_file.get(s3_path, local_path, recursive=True) 
         
  
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    model_path = local_path
 
-    with open("concepts_list.json", "w") as f:
-        json.dump(concepts_list, f, indent=4)
-
-    os.system('ls -la')
-
-    command = f"""
-    accelerate launch --mixed_precision=fp16 train_dreambooth21.py \
-    --pretrained_model_name_or_path={pretrained_model_name_or_path} \
-    --pretrained_vae_name_or_path="stabilityai/sd-vae-ft-mse" \
-    --output_dir={OUTPUT_DIR} \
-    --revision="fp16" \
-    --with_prior_preservation --prior_loss_weight=1.0 \
-    --seed=1337 \
-    --resolution={resolution} \
-    --train_batch_size={train_batch_size} \
-    {'--train_text_encoder' if train_text_encoder else ''} \
-    --mixed_precision="fp16" \
-    --use_8bit_adam \
-    --gradient_checkpointing \
-    --gradient_accumulation_steps={gradient_accumulation_steps} \
-    {'--center_crop' if center_crop else ''} \
-    --learning_rate={learning_rate} \
-    --lr_scheduler="polynomial" \
-    --lr_warmup_steps=0 \
-    --num_class_images={num_class_images} \
-    --sample_batch_size=4 \
-    --max_train_steps={max_train_steps} \
-    --save_interval={max_train_steps*10} \
-    --concepts_list="concepts_list.json"
-    """
-
-
-
-    os.system(command)
-
-    os.system('ls -la')
-
-    files_and_folders = os.listdir(OUTPUT_DIR)
-    filtered_files = []
-    for item in files_and_folders:
-        try:
-            filtered_files.append(int(item))
-        except:
-            pass
-    model_folder = max(filtered_files)
-
-    model_path = OUTPUT_DIR + '/' + '10'#str(model_folder)
-
-
-    local_path = f"{model_path}/"
-    s3_path = f"stable-diffusion-finetunings/{user_id}/{model_id}"
-    s3_file.put(local_path, s3_path, recursive=True) 
 
     tokenizer = CLIPTokenizerWithEmbeddings.from_pretrained(model_path, subfolder="tokenizer")
 
